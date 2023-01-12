@@ -1,38 +1,28 @@
 use actix_web::{
-    guard,
-    body::BoxBody, 
-    http::{header::ContentType, StatusCode}, 
-    get, post, 
-    web, App, 
-    HttpRequest,
-    HttpResponse, 
-    HttpServer, 
-    Responder, 
-    Result, 
-    error,
-    middleware::Logger, 
+    body::BoxBody,
+    error, get, guard,
+    http::{header::ContentType, StatusCode},
+    post, web, App, HttpRequest, HttpResponse, HttpServer, Responder, Result,
 };
 
-
 #[get("/")]
-async fn hello() -> impl Responder{
+async fn hello() -> impl Responder {
     HttpResponse::Ok().body("Hello World!")
 }
 
 #[post("/echo")]
-async fn echo(req_body: String) -> impl Responder{
+async fn echo(req_body: String) -> impl Responder {
     HttpResponse::Ok().body(req_body)
 }
 
-async fn manual_hello() -> impl Responder{
+async fn manual_hello() -> impl Responder {
     HttpResponse::Ok().body("Hey there!")
 }
 
-
-async fn index( ) -> impl Responder {
+async fn index() -> impl Responder {
     "Hello app/index.html"
 }
-async fn index2( ) -> impl Responder {
+async fn index2() -> impl Responder {
     "Hello app/index"
 }
 
@@ -41,22 +31,19 @@ async fn show_id(path: web::Path<(u32,)>) -> HttpResponse {
     HttpResponse::Ok().body(format!("show_id: {}", path.into_inner().0))
 }
 
-
 #[get("/test/{v1}/{v2}/")]
 async fn index3(req: HttpRequest) -> Result<String> {
     let v1: String = req.match_info().get("v1").unwrap().parse().unwrap();
     let v2: String = req.match_info().query("v2").parse().unwrap();
-    let (v3, v4):( String, String) = req.match_info().load().unwrap();
+    let (v3, v4): (String, String) = req.match_info().load().unwrap();
     Ok(format!("Test values {} {} {} {}", v1, v2, v3, v4))
 }
-
 
 #[get("/{username}/{id}/index.html")] // <- define path parameters
 async fn path_info_ext(info: web::Path<(String, u32)>) -> Result<String> {
     let info = info.into_inner();
     Ok(format!("Welcome {}! id: {}", info.0, info.1))
 }
-
 
 // This struct represents state
 struct AppState {
@@ -99,8 +86,7 @@ fn config(cfg: &mut web::ServiceConfig) {
     );
 }
 
-
-//===== read JSON 
+//===== read JSON
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -112,7 +98,6 @@ struct Info {
 async fn json_info(info: web::Json<Info>) -> impl Responder {
     format!("Welcome {}!", info.username)
 }
-
 
 //===== return JSON
 use serde::Serialize;
@@ -139,7 +124,6 @@ impl Responder for MyObj {
 async fn return_json() -> impl Responder {
     MyObj { name: "user" }
 }
-
 
 //===== ERROR =====
 use derive_more::{Display, Error};
@@ -199,8 +183,9 @@ async fn index_error_500() -> Result<&'static str, MyError> {
     Err(MyError::InternalError)
 }
 
-
 //====== LOG REPORT ======
+use actix_web::middleware::Logger;
+use env_logger::Env;
 use log::info;
 
 #[derive(Debug, Display, Error)]
@@ -212,7 +197,7 @@ pub struct MyErrorLog {
 // Use default implementation for `error_response()` method
 impl error::ResponseError for MyErrorLog {}
 
-#[get("/")]
+#[get("/index_err_log")]
 async fn index_err_log() -> Result<&'static str, MyErrorLog> {
     let err = MyErrorLog { name: "test error" };
     info!("{}", err);
@@ -222,12 +207,13 @@ async fn index_err_log() -> Result<&'static str, MyErrorLog> {
 #[rustfmt::skip]
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // use actix_web::{App, HttpServer};
 
     std::env::set_var("RUST_LOG", "info");
     std::env::set_var("RUST_BACKTRACE", "1");
-    env_logger::init();
-    
-    
+    // env_logger::init();
+    env_logger::init_from_env(Env::default().default_filter_or("info"));
+
     // Note: web::Data created _outside_ HttpServer::new closure
     let counter = web::Data::new(AppStateWithCounter {
         counter: Mutex::new(0),
@@ -244,10 +230,12 @@ async fn main() -> std::io::Result<()> {
 
 
     HttpServer::new(move || {
-        let logger = Logger::default();
+        let logger_default = Logger::default();
+        let logger_user_agent = Logger::new("%a %{User-Agent}i");
 
         App::new()
-        .wrap(logger)
+        .wrap(logger_default)
+        .wrap(logger_user_agent)
         .configure(config)
         .service(web::scope("/api").configure(scoped_config))
         .route(
@@ -285,7 +273,7 @@ async fn main() -> std::io::Result<()> {
         .service(index_error_400)
         .service(index_error_408)
         .service(index_error_500)
-
+        .service(index_err_log)
         .service(
             web::scope("/app")
             .route("index.html", web::get().to(index))
@@ -308,7 +296,6 @@ async fn main() -> std::io::Result<()> {
     .run()
     .await
 }
-
 
 #[cfg(test)]
 mod tests {
